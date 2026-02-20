@@ -78,4 +78,10 @@ The parser assumes the coordinate layout shared by JURI, IMCO, ENVI, and TRAN co
 
 ## License
 
-MIT
+The source code is released under the MIT License — see [LICENSE](LICENSE).
+
+The test fixture PDFs in `tests/` are official European Parliament documents
+(© European Union, 2025) and are not covered by that license. They are
+reproduced under the European Parliament's standard reuse policy, which permits
+reproduction provided the source is acknowledged. See [NOTICE](NOTICE) for
+details.
