@@ -17,16 +17,20 @@ import fitz  # PyMuPDF
 FOOTER_Y_THRESHOLD = 760       # points from top; lines below this are footers (true footer at y≈771)
 LARGE_FONT_THRESHOLD = 20      # "EN" watermark spans
 COLUMN_SPLIT_X = 244           # left < this → original; right ≥ this → amendment
-AMBIGUOUS_LOW = 220            # warn if span x falls in [220, 315]
+AMBIGUOUS_LOW = 220            # warn if span x falls in [220, 300]
 AMBIGUOUS_HIGH = 300
 LINE_Y_TOLERANCE = 2           # pts; spans within this are on the same line
-TABLE_HEADER_X_TOLERANCE = 20  # pts; "Motion for a resolution" header must be near x=120
-TABLE_HEADER_REF_X = 120
 AMENDMENT_HEADER_X_TOLERANCE = 80  # "Amendment N" text can be at x≈71 or x≈139
 
 AMENDMENT_RE = re.compile(r'^Amendment\s+(\d+)$', re.IGNORECASE)
 LANGUAGE_MARKER_RE = re.compile(r'^Or\.\s+[a-z]{2}$', re.IGNORECASE)
-DOC_CODE_RE = re.compile(r'PE\s*\d{3}[\.,]\d{3}|AM\\\d+|JURI-', re.IGNORECASE)
+DOC_CODE_RE = re.compile(r'PE\s*\d{3}[\.,]\d{3}|AM\\\d+|[A-Z]+-AM-\d', re.IGNORECASE)
+# Column header labels that appear alone in the right column and should not be
+# treated as amendment content (they are the right-column heading row).
+TABLE_COLUMN_LABEL_RE = re.compile(
+    r'^(Amendment|Proposal for rejection|Text proposed by the Commission)$',
+    re.IGNORECASE,
+)
 
 
 # ── data structures ───────────────────────────────────────────────────────────
@@ -166,7 +170,18 @@ def parse_amendments(lines: list) -> list:
         if current is None:
             return
 
-        current.authors = "; ".join(author_lines)
+        # Join author lines.  When a line ends with a comma the text wrapped
+        # within a single author list — continue with a space.  Otherwise
+        # separate distinct entries with "; ".
+        authors_joined = ""
+        for part in author_lines:
+            if not authors_joined:
+                authors_joined = part
+            elif authors_joined.endswith(","):
+                authors_joined += " " + part
+            else:
+                authors_joined += "; " + part
+        current.authors = authors_joined
         current.section = " / ".join(section_parts)
         current.content = "\n".join(left_lines).strip()
         current.amendment = "\n".join(right_lines).strip()
@@ -263,13 +278,21 @@ def parse_amendments(lines: list) -> list:
             continue
 
         if state == "AUTHORS":
-            # section label lines: "Motion for a resolution" bold line (not the column header)
-            # column header: non-bold "Motion for a resolution" near x≈120
-            # section identifier: bold lines after authors
-
-            if not bold and "Motion for a resolution" in text and abs(min_x - TABLE_HEADER_REF_X) <= TABLE_HEADER_X_TOLERANCE:
-                # This is the column header row → switch to TABLE_BODY
+            # Detect transition to TABLE_BODY: any span landing in the right column
+            # zone signals that the two-column table has started.  This handles all
+            # known committee header variants ("Motion for a resolution / Amendment",
+            # "Text proposed by the Commission / Amendment", "Proposal for rejection",
+            # or no explicit header at all).
+            right_spans = [s for s in line.spans if s.x >= COLUMN_SPLIT_X]
+            if right_spans:
+                left_spans = [s for s in line.spans if s.x < COLUMN_SPLIT_X]
                 state = "TABLE_BODY"
+                if not left_spans:
+                    # Right-column-only line: skip if it is a known column-header
+                    # label, otherwise treat as the first piece of amendment content.
+                    if not TABLE_COLUMN_LABEL_RE.match(text):
+                        add_table_text(line)
+                # Both-column lines are header rows — transition state but skip content.
                 continue
 
             # check for "on behalf of" pattern
@@ -279,23 +302,25 @@ def parse_amendments(lines: list) -> list:
 
             # bold size-12 line = author or section identifier
             if bold and size >= 11:
-                # Could be author names or section identifier like "Recital A"
-                # Heuristic: if it contains "Motion for a resolution" it's a section label
-                if "Motion for a resolution" in text or "Paragraph" in text or "Recital" in text or "Article" in text or "Heading" in text or "Title" in text or "Annex" in text:
+                # Heuristic: lines containing known structural keywords are section
+                # labels; everything else is an author name (until a section is seen).
+                SECTION_KEYWORDS = (
+                    "Motion for a resolution", "Paragraph", "Recital",
+                    "Article", "Heading", "Title", "Annex", "Proposal",
+                )
+                if any(kw in text for kw in SECTION_KEYWORDS):
                     section_parts.append(text)
                 else:
-                    # still in author zone or transition to section
-                    # if we already have section parts, this is another section identifier
+                    # Still in author zone, or continuation of section identifier.
                     if section_parts:
                         section_parts.append(text)
                     else:
                         author_lines.append(text)
                 continue
 
-            # non-bold lines in AUTHORS state that aren't the column header:
-            # could be additional author qualifiers or section identifiers
+            # non-bold lines in AUTHORS state without right-column spans:
+            # additional author qualifiers or sub-section identifiers — skip.
             if not bold:
-                # non-bold section identifier (rare) or other metadata — skip
                 continue
 
         elif state == "TABLE_BODY":
