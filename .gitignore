@@ -12,8 +12,9 @@ build/
 # Generated output
 amendments.json
 
-# PDF source documents
+# PDF source documents (except the bundled test fixture)
 *.pdf
+!tests/*.pdf
 
 # OS
 .DS_Store

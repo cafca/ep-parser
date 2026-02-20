@@ -1,0 +1,20 @@
+Third-Party Content
+===================
+
+The PDF files in the tests/ directory are official documents of the European
+Parliament and are NOT covered by the MIT License that governs this project's
+source code.
+
+  tests/JURI-AM-776972_EN.pdf
+  tests/IMCO-AM-773238_EN.pdf
+  tests/ENVI-AM-776927_EN.pdf
+  tests/TRAN-AM-777048_EN.pdf
+
+© European Union, 2025 – Source: European Parliament
+
+These documents are reproduced here solely as test fixtures. Reuse is
+permitted under the European Parliament's standard reuse policy, which
+authorises reproduction for personal, non-commercial, or commercial purposes
+provided that the source is acknowledged and the document is reproduced in
+full. See https://www.europarl.europa.eu/legal-notice/en/home for the full
+terms.
